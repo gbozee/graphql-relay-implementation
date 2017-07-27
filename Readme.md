@@ -157,3 +157,159 @@ If we wanted to get the result for a particular `Todo` along with its user, the 
             }
         }
     }
+
+
+## Adding Filtering Support
+
+By using the default `SQLAlchemyConnectionField` provided by `graphene_sqlalchemy`, we can use the default filters `first`, `last`, `before` and `after` as required in the relay specification. 
+
+But if we wanted to support additional custom filtering while still conforming to the relay specs, then we would need to overide the `SQLAlchemyConnectionField.get_query` classmethod.
+
+Right now, the current implementation only does an equal to comparison for a predefined field e.g
+
+    query{
+        users(name:"James"){
+            edges{
+                node{
+                    id
+                    name
+                    lastName
+                    todos{
+                    edges{
+                        node{
+                        completed
+                        }
+                    }
+                    }
+                }
+            }
+        }
+        todos(completed:false){
+            edges{
+            node{
+                task
+            }
+            }
+        }
+    }
+
+We should end up with the following 
+
+    {
+        "data": {
+            "users": {
+                "edges": [
+                    {
+                        "node": {
+                            "id": "VXNlcjox",
+                            "name": "James",
+                            "lastName": "Bond",
+                            "todos": {
+                                "edges": [
+                                    {
+                                    "node": {
+                                        "completed": false
+                                    }
+                                    },
+                                    {
+                                    "node": {
+                                        "completed": true
+                                    }
+                                    },
+                                    {
+                                    "node": {
+                                        "completed": true
+                                    }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ]
+            },
+            "todos": {
+                "edges": [
+                    {
+                    "node": {
+                        "task": "Task 1"
+                    }
+                    },
+                    {
+                    "node": {
+                        "task": "Task 4.0"
+                    }
+                    }
+                ]
+            }
+        }
+    }
+
+If we wanted for example to filter the `todos` returned by a single user, we would overide the `resolve_todos` instance method
+and account for the filter.
+
+In the example below, I am fetching the result of a single user
+with only completed todos
+
+    fragment TodoDetail on Todo {
+        id
+        task
+        completed
+    }
+    query{
+        node(id:"VXNlcjox"){
+            ... on User{
+                completedTodos: todos(completed:true){
+                    edges{
+                        node{
+                            ...TodoDetail
+                        }
+                    }
+                }
+                uncompletedTodos: todos(completed:false){
+                    edges{
+                        node{
+                            ...TodoDetail
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+We end up with the following result. 
+
+    {
+        "data": {
+            "node": {
+            "completedTodos": {
+                "edges": [
+                {
+                    "node": {
+                    "id": "VG9kbzoy",
+                    "task": "Task 2.0",
+                    "completed": true
+                    }
+                },
+                {
+                    "node": {
+                    "id": "VG9kbzoz",
+                    "task": "Task 3.0",
+                    "completed": true
+                    }
+                }
+                ]
+            },
+            "uncompletedTodos": {
+                "edges": [
+                {
+                    "node": {
+                    "id": "VG9kbzox",
+                    "task": "Task 1",
+                    "completed": false
+                    }
+                }
+                ]
+            }
+            }
+        }
+        }
